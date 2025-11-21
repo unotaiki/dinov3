@@ -14,7 +14,7 @@ import cv2
 import lovely_tensors
 import torch
 import torch.nn.functional as F
-from torch.cuda.amp import autocast
+from torch.amp import autocast
 import torchvision.transforms as TVT
 import torchvision.transforms.functional as TVTF
 from omegaconf import OmegaConf
@@ -29,8 +29,11 @@ TEXT_HEAD_WEIGHTS = os.path.join(DINOv3_REPO_DIR, "checkpoints", "dinov3_vitl16_
 # ViT-L (バックボーン) の重み
 BACKBONE_WEIGHTS = os.path.join(DINOv3_REPO_DIR, "checkpoints", "dinov3_vitl16_pretrain_lvd1689m-8aa4cbdd.pth")
 
+# 可視化
+LOGIT_SCALE = 30.0
+
 # 1. 画像が入っているフォルダ
-INPUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data"))
+INPUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data", "mask_data"))
 INPUT_DIR_NAME = os.path.basename(INPUT_DIR)
 
 # 2. マスク画像の保存先
@@ -103,6 +106,7 @@ print(f"Backgrounds: {BACKGROUND_PROMPTS}")
 import sys
 sys.path.append(DINOv3_REPO_DIR)
 
+print("Loading model...")
 model, tokenizer = torch.hub.load(
     DINOv3_REPO_DIR, 
     'dinov3_vitl16_dinotxt_tet1280d20h24l', 
@@ -124,7 +128,7 @@ tokenizer = tokenizer.tokenize
 text_feats = []   # 最終的に、すべてのクラス（犬、猫、etc.）の計算結果（特徴量）が順番に格納
 CHUNK_SIZE = 32   # AIの計算はRAMを大量に使う。多数のデータを一度に処理するとメモリ不足でエラーになるため、小分けにして処理
 
-print("Encoding text prompts")
+print("Encoding text prompts...")
 with torch.no_grad():    # 今は学習中じゃないから、余計な計算記録はしなくていいよ」と命令することで、メモリを節約し、計算速度を向上
     for class_name in tqdm.tqdm(ALL_CLASS_NAMES, desc="Classes"):
         all_prompts = [template.format(class_name) for template in ALL_PROMPT_TEMPLATES]
@@ -134,7 +138,7 @@ with torch.no_grad():    # 今は学習中じゃないから、余計な計算�
         for i in range(0, len(all_prompts), CHUNK_SIZE):
             batch_prompt = all_prompts[i : i + CHUNK_SIZE]
             tokens = tokenizer(batch_prompt).to("cuda", non_blocking=True) # 文章をバラバラにして、辞書にあるID番号（トークン）に変換。例：「a photo of dog」→ [49, 856, 11, 340]
-            with autocast(enabled=True):                                   # 小数点の精度を自動調整して（例えば32ビットから16ビットへ）、計算を高速化・省メモリ化する機能
+            with autocast('cuda', enabled=True):                                   # 小数点の精度を自動調整して（例えば32ビットから16ビットへ）、計算を高速化・省メモリ化する機能
                 feats = model.encode_text(tokens)                          # AIモデルに数字の列（トークン）を渡し、その文章の意味を表すベクトを生成
             feats = feats[:, feats.shape[1] // 2 :]                        # 元の特徴量のうち後半半分だけを抽出して、新しいfeatsとする操作です。これは、特定のニューラルネットワークアーキテクチャ（例えば、ある種の埋め込み手法や特徴の冗長性を減らす手法）で行われる
             feats = F.normalize(feats, p=2, dim=-1)                        # L2ノルムで、dim=-1つまり最後の次元（通常、個々の特徴ベクトルが格納されている次元）で正規化(長さを一で向きだけに)
@@ -282,13 +286,17 @@ with torch.no_grad():
         _, _, H, W = img_tensor.shape
 
         # Inference
-        with autocast(enabled=True):
+        with autocast('cuda', enabled=True):                                   # 小数点の精度を自動調整して（例えば32ビットから16ビットへ）、計算を高速化・省メモリ化する機能
             if INFERENCE_MODE == "whole":
                 output = predict_whole(model, img_tensor.squeeze(0), text_feats)
                 need_softmax = True      # predict_whole は Cosine Similarity を返すと仮定 (Softmaxが必要)
             elif INFERENCE_MODE == "slide":
                 output = predict_slide(model, img_tensor.squeeze(0), text_feats, SIDE, STRIDE)
                 need_softmax = False     # predict_slide は既に Softmax済みの確率を返すと仮定
+
+        # Temperature (Logit Scale)
+        # コサイン類似度は -1.0 〜 1.0 の範囲.  この小さい値をそのまま softmax に通すと、どのクラスの確率も「どんぐりの背比べ」になり、確信度が平準化（例：どのクラスも確率0.05付近）
+        output = output * LOGIT_SCALE
 
         # Post Process: resize to original size
         output = F.interpolate(output.unsqueeze(0), size=(H_orig, W_orig), mode="bilinear", align_corners=False)    # pred shape: [num_classes, H_feat, W_feat] -> interpolate -> [1, num_classes, H_orig, W_orig]
@@ -357,5 +365,4 @@ with torch.no_grad():
         cv2.imwrite(mask_path, final_mask)
         cv2.imwrite(prob_path, heatmap_color)
 
-print(heatmap_uint8)
 print(f"Done! Check the output directory{OUTPUT_DIR}.")
