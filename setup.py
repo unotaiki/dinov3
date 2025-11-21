@@ -15,7 +15,7 @@ DESCRIPTION = ""
 
 URL = "https://github.com/facebookresearch/dinov3"
 AUTHOR = "Meta AI"
-REQUIRES_PYTHON = ">=3.11"
+REQUIRES_PYTHON = ">=3.10"
 HERE = Path(__file__).parent
 
 
