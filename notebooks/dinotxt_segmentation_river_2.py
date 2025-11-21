@@ -300,35 +300,62 @@ with torch.no_grad():
             probs = F.softmax(output, dim=0) # [C, H, W], dim=0はClass次元
         else:
             probs = output # すでに確率値
-        # Probability of water surface (background)
-        bg_prob_map = probs[BG_START_IDX:, :, :].sum(dim=0) # [H, W]
-        # into image and colormap
-        bg_prob_numpy = bg_prob_map.cpu().numpy()
-        bg_prob_numpy = np.clip(bg_prob_numpy, 0, 1)
-        bg_prob_uint8 = (bg_prob_numpy * 255).astype(np.uint8)
-        # heatmap = cv2.applyColorMap(bg_prob_uint8, cv2.COLORMAP_VIRIDIS)
-        heatmap = cv2.applyColorMap(bg_prob_uint8, cv2.COLORMAP_JET)
 
-        # MASK
-        # Decide a class on the pixels
-        pred_mask = probs.argmax(dim=0).cpu().numpy()
-        # 勝者決定戦: pred の中には、各ピクセルごとに「犬である確率80%、猫10%、背景10%」のような確率が入っています。
-        # argmax は、「一番確率が高いクラスのID（ここでは犬のID）」だけを選び取ります。これで確率の数字が、「クラスIDの地図」に変わります
 
-        # Generate a mask image and save, ターゲットIDなら255(白), それ以外(背景)なら0(黒)
+# ==========================================
+        # 1. MASK 生成ロジック (修正版)
+        # ==========================================
+        # 各ピクセルで最も確率が高いクラスのインデックスを取得
+        pred_mask = probs.argmax(dim=0).cpu().numpy() # [H, W]
+
+        # 出力用マスク初期化 (黒)
         final_mask = np.zeros_like(pred_mask, dtype=np.uint8)
 
-        # ターゲットのインデックスに含まれているピクセルだけを白にする
-        for target_idx in TARGET_INDICES:
-            final_mask[pred_mask == target_idx] = 255
+        # 「予測クラスID」が「ターゲットIDリスト」に含まれる場所を 255(白) にする
+        # np.isin を使うと高速かつ簡潔です
+        is_target = np.isin(pred_mask, TARGET_INDICES)
+        final_mask[is_target] = 255
 
+
+        # ==========================================
+        # 2. HEATMAP 生成ロジック (修正版)
+        # ==========================================
+        # コンセプト: 
+        #  - そのピクセルが「背景クラス」と判定された場合 → その確率値をヒートマップにする
+        #  - そのピクセルが「ターゲットクラス」と判定された場合 → 黒にする
+
+        # 最大確率値とそのインデックスを取得
+        max_val, max_idx = torch.max(probs, dim=0) # max_val: [H, W], max_idx: [H, W]
+
+        # 背景クラスかどうかを判定 (インデックスが BG_START_IDX 以上なら背景)
+        is_bg_mask = max_idx >= BG_START_IDX  # Bool Tensor [H, W]
+
+        # ヒートマップ用の生データ作成 (0.0 ~ 1.0)
+        prob_map_tensor = torch.zeros_like(max_val)
+        
+        # 背景と判定された場所だけ、その確率値を入れる (それ以外は0.0のまま)
+        prob_map_tensor[is_bg_mask] = max_val[is_bg_mask]
+
+        # NumPy / uint8 変換
+        prob_map_numpy = prob_map_tensor.cpu().numpy()
+        heatmap_uint8 = (prob_map_numpy * 255).astype(np.uint8)
+
+        # カラーマップ適用 (Viridis: 0=紫, 255=黄)
+        heatmap_color = cv2.applyColorMap(heatmap_uint8, cv2.COLORMAP_VIRIDIS)
+
+        # applyColorMapは値が0の場所(ターゲット部分)を「紫」にしてしまうため、
+        # 背景以外(ターゲット部分)を強制的に「黒 (0,0,0)」で塗りつぶす
+        bg_mask_numpy = is_bg_mask.cpu().numpy()
+        heatmap_color[~bg_mask_numpy] = [0, 0, 0] # ~ はNOT演算子
+
+        # 保存
         filename = os.path.basename(image_path) 
         name, _ = os.path.splitext(filename)
         mask_path = os.path.join(OUTPUT_DIR, "mask", f"{name}.png")
         prob_path = os.path.join(OUTPUT_DIR, "prob", f"{name}.png")
 
         cv2.imwrite(mask_path, final_mask)
-        cv2.imwrite(prob_path, heatmap)
+        cv2.imwrite(prob_path, heatmap_color)
 
-print(bg_prob_uint8)
+print(heatmap_uint8)
 print(f"Done! Check the output directory{OUTPUT_DIR}.")
