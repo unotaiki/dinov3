@@ -10,8 +10,8 @@ from torch.amp import autocast
 from PIL import Image
 import numpy as np
 
-import dinotxt_segment_utils.config_land_river as config
-# import dinotxt_segment_utils.config as config
+# import dinotxt_segment_utils.config_land_river as config
+import dinotxt_segment_utils.config as config
 import dinotxt_segment_utils.utils as utils
 
 
@@ -80,6 +80,7 @@ def main():
     
     os.makedirs(os.path.join(output_dir, "mask"), exist_ok=True)
     os.makedirs(os.path.join(output_dir, "prob"), exist_ok=True)
+    os.makedirs(os.path.join(output_dir, "seg"), exist_ok=True)
 
 # ============================================================
     # Config 保存ロジックの修正
@@ -207,6 +208,15 @@ def main():
             
             # ヒートマップ保存: 背景(Water)以外を可視化
             utils.save_heatmap(confidence_map, pred_mask, os.path.join(output_dir, "prob", f"{name}.png"))
+
+            # ★★★ 3. 新規: 指定色によるセマンティックセグメンテーション保存 ★★★
+            # CLASS_COLORS はコード上部で定義したものを使用
+            utils.save_colored_segmentation(
+                pred_mask, 
+                os.path.join(output_dir, "seg", f"{name}.png"), 
+                config.CLASS_COLORS
+            )
+
 
     print(f"Done! Check {output_dir}")
 

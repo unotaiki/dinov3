@@ -50,7 +50,6 @@ PROMPT_TEMPLATES = [
 PROMPTS_WATER = [
     "river", "lake", "sea",
     "river water",      # 基本
-    # "muddy water",      # 川が濁っている場合（重要）
     "blue water",       # 晴天時
     "green water",      # 深い川や藻類の影響
     "water surface",    # 表面
@@ -68,7 +67,6 @@ PROMPTS_LAND = [
     "gravel",           # 砂利（砂州によくある）
     "pebbles",          # 小石
     "dirt",             # 土
-    "mud",              # 泥（水辺の泥）
     "dry land",         # 乾いた土地
     "rock", "stone",    # 岩、石
     "boulder",          # 大きな岩
@@ -80,39 +78,38 @@ PROMPTS_LAND = [
     "sandy spit",       # 砂州
     "shoal",            # 砂州
     "shore",            # 岸辺
-]
 
-# カテゴリ3: 植生 (抽出対象2)
-PROMPTS_VEGETATION = [
-    # --- 一般的な植生  ---
-    "vegetation",       # 植生一般
     "grass",            # 草
     "tree", "bush",     # 木、茂み
-    "leaves",           # 葉
+    "vegetation",
     "plant",
-    # --- 浮草  ---
-    "leaves on the water surface",
-    "green scum",       # アオコ、浮遊物
-    "floating weeds",   # 浮草
-    "water plants",     # 水草
-    "lily pads",        # 睡蓮の葉
-    # # --- 苔類  ---
-    # "algae",            # 藻（水面の緑を吸着させる）
-    # "moss",             # 苔
+    "grass on the shore"
 ]
+
+# # カテゴリ3: 植生 (抽出対象2)
+# PROMPTS_VEGETATION = [
+#     # --- 一般的な植生  ---
+#     "vegetation",       # 植生一般
+#     "grass",            # 草
+#     "tree", "bush",     # 木、茂み
+#     "leaves",           # 葉
+#     "plant",
+#     # --- 浮草  ---
+#     "leaves on the water surface",
+#     # "green scum",       # アオコ、浮遊物
+#     # "floating weeds",   # 浮草
+#     # "water plants",     # 水草
+#     # "lily pads",        # 睡蓮の葉
+#     # # --- 苔類  ---
+#     # "algae",            # 藻（水面の緑を吸着させる）
+#     # "moss",             # 苔
+# ]
 
 # マッピング定義: どのリストがどのクラスIDに対応するか
 # 0: Water, 1: Land, 2: Vegetation
 CLASS_MAPPING = {
     0: PROMPTS_WATER,
-    1: PROMPTS_LAND,
-    2: PROMPTS_VEGETATION
+    1: PROMPTS_LAND
 }
 
-CLASS_NAMES = ["Water", "Land", "Vegetation"]
-
-CLASS_COLORS = {
-    0: "#658FFF",  # Water (例として指定された色)
-    1: "#CC9933",  # Land (例: Forest Green)
-    2: "#66FF66", # vegetation 
-}
+CLASS_NAMES = ["Water", "Land"]
